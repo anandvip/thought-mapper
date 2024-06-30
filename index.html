@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Basic Thought Mapper</title>
+  <style>
+    .thought {
+      display: flex;
+      align-items: stretch;
+      margin: 10px 0;
+      border-radius: 5px;
+      overflow: hidden;
+      cursor: move;
+    }
+    .color-change {
+      width: 50px;
+      background-color: #d3d3d3;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      text-align: center;
+    }
+    .text {
+      flex-grow: 1;
+      padding: 10px;
+      border: none;
+      outline: none;
+    }
+    .red { background-color: #ffcccb; }
+    .green { background-color: #90EE90; }
+    .blue { background-color: #ADD8E6; }
+    .cluster {
+      border: 1px solid #ccc;
+      padding: 10px;
+      margin: 10px 0;
+      min-height: 50px;
+    }
+    .cluster-title {
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+    .dragging {
+      opacity: 0.5;
+    }
+    .container {
+      display: flex;
+    }
+    .input-column, .output-column {
+      flex: 1;
+      padding: 10px;
+    }
+    .output-column {
+      border-left:0.5pt solid;
+      height:100dvh
+    }
+  </style>
+</head>
+<body>
+  <h1>Basic Thought Mapper - Version 14</h1>
+  
+  <div class="container">
+    <div class="input-column">
+      <div>
+        <label for="thought-input">New Thought:</label>
+        <input type="text" id="thought-input">
+        <button onclick="addThought()">Add</button>
+      </div>
+      
+      <div class="thought">
+ <div class="context">
+                 <label for="cluster-title-input">New Context Title:</label>
+          <input type="text" id="cluster-title-input">
+          <button onclick="createCluster()">Create Context</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="output-column">
+      <div id="thought-container"></div>
+      <div id="cluster-container"></div>
+    </div>
+  </div>
+  
+  <script>
+    let thoughts = [];
+    let clusters = [];
+    const colors = ['red', 'green', 'blue'];
+    let draggedThought = null;
+    
+    function debounce(func, wait) {
+      let timeout;
+      return function executedFunction(...args) {
+        const later = () => {
+          clearTimeout(timeout);
+          func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
+      
+    }
+    
+    function addThought() {
+      const input = document.getElementById('thought-input');
+      const thought = {
+        id: Date.now(),
+        text: input.value.trim(),
+        colorIndex: 0
+      };
+      
+      if (thought.text !== '') {
+        thoughts.push(thought);
+        input.value = '';
+        renderThoughts();
+      }
+    }
+    
+    const changeColor = debounce((thought) => {
+      thought.colorIndex = (thought.colorIndex + 1) % colors.length;
+      renderThoughts();
+      renderClusters();
+    }, 300);
+    
+    function renderThoughts() {
+      const container = document.getElementById('thought-container');
+      container.innerHTML = '';
+      
+      for (const thought of thoughts) {
+        const div = document.createElement('div');
+        div.className = 'thought';
+        div.draggable = true;
+        div.ondragstart = (e) => {
+          draggedThought = thought;
+          e.dataTransfer.setData('text/plain', thought.id);
+          setTimeout(() => div.classList.add('dragging'), 0);
+        };
+        div.ondragend = () => div.classList.remove('dragging');
+        
+        const leftColorChange = document.createElement('div');
+        leftColorChange.className = 'color-change';
+        leftColorChange.innerText = 'color change safe click zone';
+        leftColorChange.onclick = (e) => {
+          e.stopPropagation();
+          changeColor(thought);
+        };
+        
+        const text = document.createElement('textarea');
+        text.className = `text ${colors[thought.colorIndex]}`;
+        text.value = thought.text;
+        text.oninput = debounce((event) => {
+          thought.text = event.target.value;
+        }, 300);
+        
+        const rightColorChange = document.createElement('div');
+        rightColorChange.className = 'color-change';
+        rightColorChange.innerText = 'color change safe click zone';
+        rightColorChange.onclick = (e) => {
+          e.stopPropagation();
+          changeColor(thought);
+        };
+        
+        div.appendChild(leftColorChange);
+        div.appendChild(text);
+        div.appendChild(rightColorChange);
+        
+        container.appendChild(div);
+      }
+    }
+    
+    function createCluster() {
+      const titleInput = document.getElementById('cluster-title-input');
+      const title = titleInput.value.trim();
+      
+      if (title !== '') {
+        const cluster = {
+          title: title,
+          thoughts: []
+        };
+        
+        clusters.push(cluster);
+        titleInput.value = '';
+        renderClusters();
+      }
+    }
+    
+    function renderClusters() {
+      const container = document.getElementById('cluster-container');
+      container.innerHTML = '';
+      
+      for (const cluster of clusters) {
+        const div = document.createElement('div');
+        div.className = 'cluster';
+        div.ondragover = (e) => e.preventDefault();
+        div.ondrop = (e) => {
+          e.preventDefault();
+          if (draggedThought) {
+            const thoughtIndex = thoughts.findIndex(t => t.id === draggedThought.id);
+            if (thoughtIndex !== -1) {
+              cluster.thoughts.push(thoughts.splice(thoughtIndex, 1)[0]);
+            } else {
+              for (const otherCluster of clusters) {
+                const clusterThoughtIndex = otherCluster.thoughts.findIndex(t => t.id === draggedThought.id);
+                if (clusterThoughtIndex !== -1) {
+                  cluster.thoughts.push(otherCluster.thoughts.splice(clusterThoughtIndex, 1)[0]);
+                  break;
+                }
+              }
+            }
+            draggedThought = null;
+            renderThoughts();
+            renderClusters();
+          }
+        };
+        
+        const title = document.createElement('div');
+        title.innerText = cluster.title;
+        title.className = 'cluster-title';
+        div.appendChild(title);
+        
+        for (const thought of cluster.thoughts) {
+          const thoughtDiv = document.createElement('div');
+          thoughtDiv.className = 'thought';
+          thoughtDiv.draggable = true;
+          thoughtDiv.ondragstart = (e) => {
+            draggedThought = thought;
+            e.dataTransfer.setData('text/plain', thought.id);
+            setTimeout(() => thoughtDiv.classList.add('dragging'), 0);
+          };
+          thoughtDiv.ondragend = () => thoughtDiv.classList.remove('dragging');
+          
+          const leftColorChange = document.createElement('div');
+          leftColorChange.className = 'color-change';
+          leftColorChange.innerText = 'color change safe click zone';
+          leftColorChange.onclick = (e) => {
+            e.stopPropagation();
+            changeColor(thought);
+          };
+          
+          const text = document.createElement('textarea');
+          text.className = `text ${colors[thought.colorIndex]}`;
+          text.value = thought.text;
+          text.oninput = debounce((event) => {
+            thought.text = event.target.value;
+          }, 300);
+          
+          const rightColorChange = document.createElement('div');
+          rightColorChange.className = 'color-change';
+          rightColorChange.innerText = 'color change safe click zone';
+          rightColorChange.onclick = (e) => {
+            e.stopPropagation();
+            changeColor(thought);
+          };
+          
+          thoughtDiv.appendChild(leftColorChange);
+          thoughtDiv.appendChild(text);
+          thoughtDiv.appendChild(rightColorChange);
+          
+          div.appendChild(thoughtDiv);
+        }
+        
+        container.appendChild(div);
+      }
+    }
+    
+    renderThoughts();
+    renderClusters();
+  </script>
+</body>
+</html>
